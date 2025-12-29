@@ -1,17 +1,25 @@
+# Stage 0: Get the docker binary (docker:29.1.3-cli 2025-12-18)
+FROM docker:29.1.3-cli AS docker_cli
+
+# Stage 1: Build the Jenkins agent image
 FROM jenkins/ssh-agent:jdk17
 
-#SWITCH USER TO ROOT
 USER root
 
-RUN chown jenkins:jenkins /home/jenkins && chown jenkins:jenkins /home/jenkins/.ssh/
 
-RUN apt-get update
+# SSH home directory setup (permissions look good)
+RUN mkdir -p /home/jenkins/.ssh && \
+    chown -R jenkins:jenkins /home/jenkins && \
+    chmod 700 /home/jenkins/.ssh
 
-# INSTALL DOCKER
-RUN apt-get -y install apt-transport-https ca-certificates curl software-properties-common && \
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
-    apt-get -y update && \
-    apt-get -y install docker-ce
 
-RUN usermod -a -G docker jenkins && usermod -a -G systemd-network jenkins
+# Copy the docker CLI binary from Stage 0 into this image
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+
+
+# SSH hardening (тільки ключі, root не логіниться)
+RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
+
+
+USER jenkins
